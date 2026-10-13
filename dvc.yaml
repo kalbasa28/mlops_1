@@ -1,0 +1,39 @@
+# The pipeline: prepare -> train -> evaluate.
+# `dvc repro` re-runs a stage only if one of its deps, params or outs changed.
+
+stages:
+  prepare:
+    cmd: python src/prepare_data.py
+    deps:
+      - src/prepare_data.py
+      - data/raw/ai4i2020.csv
+    params:
+      - prepare
+    outs:
+      - data/processed/train.csv
+      - data/processed/test.csv
+
+  train:
+    cmd: python src/train.py
+    deps:
+      - src/train.py
+      - src/metrics.py
+      - data/processed/train.csv
+    params:
+      - train
+    outs:
+      - models/model.pkl
+      - models/run_id.txt:
+          cache: false
+
+  evaluate:
+    cmd: python src/evaluate.py
+    deps:
+      - src/evaluate.py
+      - src/metrics.py
+      - models/model.pkl
+      - models/run_id.txt
+      - data/processed/test.csv
+    metrics:
+      - metrics.json:
+          cache: false

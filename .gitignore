@@ -226,5 +226,6 @@ __marimo__/
 mlruns/
 mlartifacts/
 mlflow.db
-# JetBrains IDE settings (personal, machine-specific)
+# JetBrains IDE settings and run configurations (personal, machine-specific)
 .idea/
+.run/
