@@ -218,3 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Project-specific (MLOps U1) ---
+# macOS
+.DS_Store
+# MLflow local fallbacks: runs must go to the cluster server, never to local files
+mlruns/
+mlartifacts/

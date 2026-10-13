@@ -1,0 +1,18 @@
+# Python 3.14. Exact pins (==) so every run uses the same library versions;
+# this is part of the reproducibility requirement. Update and retest together.
+
+# Data + model
+numpy==2.5.4
+pandas==3.0.6
+scikit-learn==1.9.1
+joblib==1.6.0
+
+# Pipeline config (params.yaml)
+pyyaml==6.0.3
+
+# Experiment tracking client. "skinny" = tracking client without the server/UI;
+# the server runs in the cluster and must use the same MLflow version (3.17.1).
+mlflow-skinny==3.17.1
+
+# Data and pipeline versioning
+dvc==3.67.1
