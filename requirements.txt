@@ -10,9 +10,9 @@ joblib==1.6.0
 # Pipeline config (params.yaml)
 pyyaml==6.0.3
 
-# Experiment tracking client. "skinny" = tracking client without the server/UI;
-# the server runs in the cluster and must use the same MLflow version (3.17.1).
-mlflow-skinny==3.17.1
+# Experiment tracking. Full package (not mlflow-skinny) so `mlflow server` can
+# also run locally during development. The cluster server must use the same version.
+mlflow==3.17.1
 
 # Data and pipeline versioning
 dvc==3.67.1

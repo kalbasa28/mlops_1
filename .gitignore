@@ -222,6 +222,9 @@ __marimo__/
 # --- Project-specific (MLOps U1) ---
 # macOS
 .DS_Store
-# MLflow local fallbacks: runs must go to the cluster server, never to local files
+# MLflow local files (dev server or accidental local logging); real runs go to the cluster server
 mlruns/
 mlartifacts/
+mlflow.db
+# JetBrains IDE settings (personal, machine-specific)
+.idea/
