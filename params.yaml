@@ -2,7 +2,7 @@ prepare:
   test_size: 0.2
   random_seed: 42
 train:
-  n_estimators: 100
-  max_depth: null
-  class_weight: balanced
+  n_estimators: 200
+  max_depth: 10
+  class_weight: balanced_subsample
   random_seed: 42
