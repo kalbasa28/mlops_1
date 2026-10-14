@@ -48,7 +48,7 @@ def main() -> None:
     x_train, y_train = train.drop(columns=TARGET), train[TARGET]
 
     mlflow.set_experiment(os.environ.get("MLFLOW_EXPERIMENT_NAME", "predictive-maintenance"))
-    run_name = f"rf-n{params['n_estimators']}-d{params['max_depth']}"
+    run_name = f"rf-n{params['n_estimators']}-d{params['max_depth']}-cw{params['class_weight']}"
 
     with mlflow.start_run(run_name=run_name) as run:
         mlflow.log_params(flatten_params(all_params))
@@ -65,6 +65,7 @@ def main() -> None:
         model = RandomForestClassifier(
             n_estimators=params["n_estimators"],
             max_depth=params["max_depth"],
+            class_weight=params["class_weight"],
             random_state=params["random_seed"],
         )
         model.fit(x_train, y_train)
