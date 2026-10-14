@@ -31,8 +31,10 @@ def main() -> None:
     with open("models/run_id.txt") as f:
         run_id = f.read().strip()
     client = mlflow.MlflowClient()
+    # The model logged by train.py, so the test scores also show on the model's page.
+    model_id = client.get_run(run_id).outputs.model_outputs[0].model_id
     for name, value in metrics.items():
-        client.log_metric(run_id, f"eval/{name}", value)
+        client.log_metric(run_id, f"eval/{name}", value, model_id=model_id)
 
 
 if __name__ == "__main__":
