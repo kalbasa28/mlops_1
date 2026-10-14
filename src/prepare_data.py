@@ -1,9 +1,3 @@
-"""Clean the raw AI4I data and split it into train/test sets.
-
-Run: python src/prepare_data.py
-Reads data/raw/ai4i2020.csv and params.yaml (section `prepare`),
-writes data/processed/train.csv and data/processed/test.csv.
-"""
 import os
 
 import pandas as pd
@@ -14,16 +8,14 @@ RAW = "data/raw/ai4i2020.csv"
 PARAMS_FILE = "params.yaml"
 OUT_DIR = "data/processed"
 TARGET = "Machine failure"
-DROP = ["UDI", "Product ID", "TWF", "HDF", "PWF", "OSF", "RNF"]
+ID_COLUMNS = ["UDI", "Product ID"]
+TARGET_LEAKING_FAILURE_MODES = ["TWF", "HDF", "PWF", "OSF", "RNF"]
+TYPE_CODES = {"L": 0, "M": 1, "H": 2}
 
 
 def clean(df: pd.DataFrame) -> pd.DataFrame:
-    """Return a copy of df with only model-ready columns: numeric features + TARGET."""
-    df_dropped = df.drop(columns=DROP)
-    df_clean = df_dropped.assign(Type=df_dropped["Type"]
-                                 .map({"L": 0, "M": 1, "H": 2}))
-    return df_clean
-
+    df = df.drop(columns=ID_COLUMNS + TARGET_LEAKING_FAILURE_MODES)
+    return df.assign(Type=df["Type"].map(TYPE_CODES))
 
 
 def main() -> None:
@@ -31,9 +23,6 @@ def main() -> None:
         params = yaml.safe_load(f)["prepare"]
 
     df = clean(pd.read_csv(RAW))
-
-    # Stratify on the target: with only ~3.4% failures, a plain random split
-    # could put noticeably more or fewer failures into the test set.
     train, test = train_test_split(
         df,
         test_size=params["test_size"],

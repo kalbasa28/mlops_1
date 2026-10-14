@@ -1,6 +1,3 @@
-# The pipeline: prepare -> train -> evaluate.
-# `dvc repro` re-runs a stage only if one of its deps, params or outs changed.
-
 stages:
   prepare:
     cmd: python src/prepare_data.py

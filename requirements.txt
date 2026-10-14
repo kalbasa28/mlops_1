@@ -1,18 +1,7 @@
-# Python 3.14. Exact pins (==) so every run uses the same library versions;
-# this is part of the reproducibility requirement. Update and retest together.
-
-# Data + model
 numpy==2.5.4
 pandas==3.0.6
 scikit-learn==1.9.1
 joblib==1.6.0
-
-# Pipeline config (params.yaml)
 pyyaml==6.0.3
-
-# Experiment tracking. Full package (not mlflow-skinny) so `mlflow server` can
-# also run locally during development. The cluster server must use the same version.
 mlflow==3.17.1
-
-# Data and pipeline versioning
 dvc==3.67.1

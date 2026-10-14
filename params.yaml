@@ -1,11 +1,8 @@
-# All tunable values of the pipeline. Change a value here and `dvc repro`
-# re-runs only the stages that list that value under `params` in dvc.yaml.
-
 prepare:
-  test_size: 0.2      # share of rows held out for the test set
-  random_seed: 42     # makes the train/test split identical on every run
+  test_size: 0.2
+  random_seed: 42
 
 train:
-  n_estimators: 100   # number of trees in the forest
-  max_depth: 10       # max depth of each tree (null = unlimited)
-  random_seed: 42     # makes bootstrap samples and feature subsets repeatable
+  n_estimators: 100
+  max_depth: 10
+  random_seed: 42
