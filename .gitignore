@@ -226,3 +226,9 @@ mlartifacts/
 mlflow.db
 .idea/
 .run/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+tfplan

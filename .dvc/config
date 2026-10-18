@@ -1,4 +1,6 @@
 [core]
-    remote = localremote
+    remote = gcs
 ['remote "localremote"']
     url = /Users/rokas-personal/dvcstore
+['remote "gcs"']
+    url = gs://mlops-512019-dvc

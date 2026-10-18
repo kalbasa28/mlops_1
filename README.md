@@ -22,6 +22,7 @@ dvc repro ── prepare → train → evaluate        namespace mlops
 | MLflow login | none (no authentication in the core U1) |
 | PostgreSQL | inside the cluster only (`postgres:5432`), not exposed to the Mac. Credentials are in the Secret `postgres-credentials` |
 | MLflow experiment | `predictive-maintenance` |
+| DVC remote | `gs://mlops-512019-dvc` (private GCS bucket, created with Terraform in `terraform/gcs/`) |
 | Test metrics of the last run | `metrics.json` (`dvc metrics show`) |
 | Training image | `ghcr.io/kalbasa28/mlops_1:sha-<first 12 chars of commit>` (amd64 + arm64), see [`docs/docker-image.md`](docs/docker-image.md) |
 | Requirements (FR/NFR) | [`docs/requirements.md`](docs/requirements.md) v1.1 |
@@ -38,6 +39,7 @@ dvc repro ── prepare → train → evaluate        namespace mlops
 | `data/raw/ai4i2020.csv.dvc` | DVC pointer to the raw dataset (the CSV itself is not in Git) |
 | `docker/` | `Dockerfile` (training image), `mlflow-server.Dockerfile` (MLflow + PostgreSQL driver) |
 | `k8s/` | `kind` cluster config, namespace, PostgreSQL and MLflow manifests |
+| `terraform/gcs/` | Terraform for the GCS bucket that holds the DVC remote |
 | `.github/workflows/` | CI: build, scan and push the training image to GHCR |
 | `docs/` | Requirements, image size and Trivy results, U1 report |
 
@@ -52,6 +54,7 @@ Tested on macOS (Apple Silicon) with these versions:
 | kind | 0.33.0 |
 | kubectl | 1.36 |
 | openssl, curl, unzip | any |
+| Terraform, gcloud CLI | 1.16, any (only to create your own DVC remote bucket, section 10) |
 
 Docker needs about 4 GB of RAM for the cluster. Mac port 5001 must be free. Port 5000 is not used, because macOS AirPlay holds it.
 
@@ -71,11 +74,15 @@ Activate the venv (`source .venv/bin/activate`) in every new terminal before run
 
 The pipeline never downloads data itself (NFR-05). Put `data/raw/ai4i2020.csv` in place once, in one of two ways.
 
-**Option A: from the DVC remote** (works only on a machine that has the remote folder `~/dvcstore`):
+**Option A: from the DVC remote on Google Cloud Storage** (needs read access to the bucket):
 
 ```bash
+gcloud auth application-default login
 dvc pull data/raw/ai4i2020.csv.dvc
 ```
+
+The bucket `gs://mlops-512019-dvc` is private. Ask the repository owner for read access
+(`roles/storage.objectViewer`) for your Google account, or use option B.
 
 **Option B: from UCI** (any machine):
 
@@ -88,8 +95,7 @@ dvc status data/raw/ai4i2020.csv.dvc
 
 `dvc commit` copies the file into the local DVC cache. `reproduce.py` restores data from the cache. The last command must print `Data and pipelines are up to date.`. That means the file's md5 matches the pointer (`f0adaa9c5e25366c6df1cc2684479871`), so this is exactly the data the runs were trained on.
 
-If you have your own DVC remote folder, point to it without editing the committed config:
-`dvc remote modify --local localremote url /path/to/your/dvcstore`.
+To use your own bucket instead, see section 10.
 
 ## 3. Create the cluster and start MLflow
 
@@ -161,7 +167,7 @@ dvc repro         # prepare is skipped; only train and evaluate re-run
 dvc metrics diff  # compare with the committed metrics
 git add params.yaml dvc.lock metrics.json models/run_id.txt
 git commit -m "run: max_depth 8"
-dvc push          # only if you have the DVC remote
+dvc push          # only with write access to the DVC remote
 ```
 
 DVC re-runs a stage only when the hash of one of its deps, params or outs changed. `prepare` depends only on
@@ -209,6 +215,36 @@ docker build -f docker/Dockerfile --build-arg GIT_COMMIT=$(git rev-parse HEAD) -
 
 Size and the Trivy scan results: [`docs/docker-image.md`](docs/docker-image.md).
 
+## 10. DVC remote on Google Cloud Storage (Terraform)
+
+The DVC remote is a GCS bucket defined as code in `terraform/gcs/`: the Cloud Storage API and one bucket
+(`<project_id>-dvc`, region `europe-central2`, private, uniform bucket-level access). To create your own copy you need
+a GCP project with billing enabled.
+
+```bash
+gcloud auth login
+gcloud config set project <your-project-id>
+gcloud auth application-default login
+
+cd terraform/gcs
+# set project_id in terraform.tfvars to <your-project-id>
+terraform init
+terraform plan -out=tfplan   # review: 2 resources to add
+terraform apply tfplan
+cd ../..
+
+dvc remote modify --local gcs url "$(terraform -chdir=terraform/gcs output -raw dvc_remote_url)"
+dvc push
+```
+
+- Terraform and DVC both use the Application Default Credentials from `gcloud auth application-default login`;
+  there is no key file. When the login page lists permissions, tick all of them.
+- `dvc remote modify --local` writes your bucket URL to `.dvc/config.local` (gitignored), so the committed
+  config keeps pointing at the original bucket.
+- Terraform state (`terraform.tfstate`) is local and gitignored. Keep it: without it Terraform no longer knows
+  it owns the bucket.
+- The bucket has `force_destroy = false`, so `terraform destroy` refuses to delete it while it holds data.
+
 ## Stop and clean up
 
 ```bash
@@ -226,3 +262,6 @@ after a restart the cluster, PostgreSQL and MLflow come back with all runs.
 | `403 Invalid Host header` | MLflow accepts only the host names listed in `--allowed-hosts` (`k8s/mlflow.yaml`). Use `127.0.0.1:5001` from the Mac, `mlops-control-plane:30500` from Docker |
 | `curl 127.0.0.1:5001` refuses the connection | The cluster was created without `k8s/kind-config.yaml` (port mappings are fixed at creation: delete and recreate the cluster), or the MLflow pod is not ready (`kubectl get pods -n mlops`) |
 | `python: command not found` during `dvc repro` | The venv is not active: `source .venv/bin/activate` |
+| `dvc pull`/`push`: `CERTIFICATE_VERIFY_FAILED` | The python.org installer on macOS ships without root certificates. Run `/Applications/Python 3.14/Install Certificates.command` once |
+| `dvc pull`/`push`: `403` or `401` from `storage.googleapis.com` | No access to the bucket, or no credentials: run `gcloud auth application-default login`; ask the owner for access or use your own bucket (section 10) |
+| `dvc pull`/`push` prints `I... fork_posix.cc` lines | Harmless log lines from Google's gRPC library |
