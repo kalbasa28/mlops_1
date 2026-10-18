@@ -39,7 +39,7 @@ Trivy 0.75.0, `trivy image --scanners vuln mlops-train:local`, 2026-10-18. Full 
 | Debian 13.7 OS packages | 0 | 44 | 58 | 61 | 1 | 0 |
 | Python packages | 0 | 0 | 2 | 0 | 0 | 2 |
 
-Policy: any CRITICAL blocks publishing the image. Each HIGH is reviewed below.
+Policy: a CRITICAL with a fix available blocks publishing the image (CI gate, see below). Each HIGH is reviewed below.
 
 The 44 HIGH findings are 8 distinct CVEs, each repeated across the packages built from one source:
 
@@ -54,3 +54,23 @@ The 44 HIGH findings are 8 distinct CVEs, each repeated across the packages buil
 None of them has a fixed Debian version yet. `apt-get upgrade` runs at build time, so a rebuild picks up fixes when Debian ships them.
 
 The 2 MEDIUM Python findings are both `pip` 26.1.2 (CVE-2026-13346, fixed in 26.2.0), one copy in the base image and one in the venv. pip only runs at build time and installs from PyPI; the training run never calls it.
+
+## Published image (GHCR)
+
+`.github/workflows/train-image.yml` builds the image on every push to `main`. It runs native `ubuntu-24.04` (amd64) and `ubuntu-24.04-arm` (arm64) runners, does a smoke test and a Trivy gate, and pushes only after both pass. The two architectures are joined into one multi-arch tag. Docker picks the matching one on pull.
+
+```bash
+docker pull ghcr.io/kalbasa28/mlops_1:sha-5702666bc8f3
+```
+
+| | |
+|---|---|
+| Tag | `sha-5702666bc8f3` (first 12 chars of the commit; never `latest`) |
+| Index digest | `sha256:5d9dba77103c51644a0eba5284b98d54616e2614a36897921b53015f3c4a13e3` |
+| Platforms | `linux/amd64`, `linux/arm64` |
+| Size (`linux/arm64`, pulled) | 545 MB (544,545,004 B) |
+| `org.opencontainers.image.revision` | `5702666bc8f396f95a3070714a528a5c18186e10` |
+| Access | public, anonymous pull works |
+| CI run | 39151261766 (2026-10-18, 1 min 54 s) |
+
+CI Trivy 0.75.0, identical on both architectures: CRITICAL 0, HIGH 44, MEDIUM 60, LOW 61, UNKNOWN 1. None of the CRITICAL/HIGH findings has a fix, so these are the same accepted findings as above. The full JSON reports are kept as workflow artifacts (`trivy-train-amd64`, `trivy-train-arm64`).
