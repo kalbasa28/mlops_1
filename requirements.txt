@@ -1,4 +1,2 @@
 -r requirements-train.txt
 mlflow==3.17.1
-dvc==3.67.1
-dvc-gs==3.1.0

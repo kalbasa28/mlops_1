@@ -16,13 +16,16 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     GIT_PYTHON_REFRESH=quiet \
+    DVC_NO_ANALYTICS=1 \
     GIT_COMMIT="${GIT_COMMIT}"
 RUN useradd --create-home --uid 1000 mluser \
-    && install -d -o mluser -g mluser /app /app/data /app/data/raw
+    && install -d -o mluser -g mluser /app /app/.dvc /app/data /app/data/raw
 WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 COPY --chown=mluser:mluser params.yaml ./
 COPY --chown=mluser:mluser src/ ./src/
+COPY --chown=mluser:mluser .dvc/config ./.dvc/
 COPY --chown=mluser:mluser data/raw/ai4i2020.csv.dvc ./data/raw/
 USER mluser
+RUN dvc config --local core.no_scm true
 CMD ["sh", "-c", "python src/prepare_data.py && python src/train.py && python src/evaluate.py"]
