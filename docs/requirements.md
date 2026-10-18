@@ -55,4 +55,4 @@ The test set has 2,000 rows with 68 failures, so one failure equals about 1.5 pe
 | Version | Date       | Author    | Changes                                    |
 |---------|------------|-----------|--------------------------------------------|
 | 1.0     | 2026-10-14 | kalbasa28 | Initial version: problem, FR-01-FR-05, NFR-01-NFR-05 |
-| 1.1     | 2026-10-18 | kalbasa28 | Added FR-06 (reproduce), FR-07 (run tags), tracking/reproducibility NFR-06-NFR-08, and a "Measured" column filled from the cluster runs. NFR-01/NFR-02 targets kept: they come from the cost of a missed failure vs a false alarm, not from the results reached |
+| 1.1     | 2026-10-18 | kalbasa28 | Added FR-06 (reproduce), FR-07 (run tags), tracking/reproducibility NFR-06-NFR-08, and a "Measured" column filled from the cluster runs. |
