@@ -23,6 +23,7 @@ dvc repro ── prepare → train → evaluate        namespace mlops
 | PostgreSQL | inside the cluster only (`postgres:5432`), not exposed to the Mac. Credentials are in the Secret `postgres-credentials` |
 | MLflow experiment | `predictive-maintenance` |
 | DVC remote | `gs://mlops-512019-dvc` (private GCS bucket, created with Terraform in `terraform/gcs/`) |
+| Training in the cluster | Kubernetes Job `train` in namespace `mlops` (`k8s/train-job.yaml`), section 11 |
 | Test metrics of the last run | `metrics.json` (`dvc metrics show`) |
 | Training image | `ghcr.io/kalbasa28/mlops_1:sha-<first 12 chars of commit>` (amd64 + arm64), see [`docs/docker-image.md`](docs/docker-image.md) |
 | Requirements (FR/NFR) | [`docs/requirements.md`](docs/requirements.md) v1.1 |
@@ -38,8 +39,8 @@ dvc repro ── prepare → train → evaluate        namespace mlops
 | `reproduce.py` | Re-runs a historical MLflow run and compares its metrics |
 | `data/raw/ai4i2020.csv.dvc` | DVC pointer to the raw dataset (the CSV itself is not in Git) |
 | `docker/` | `Dockerfile` (training image), `mlflow-server.Dockerfile` (MLflow + PostgreSQL driver) |
-| `k8s/` | `kind` cluster config, namespace, PostgreSQL and MLflow manifests |
-| `terraform/gcs/` | Terraform for the GCS bucket that holds the DVC remote |
+| `k8s/` | `kind` cluster config, namespace, PostgreSQL and MLflow manifests, training Job |
+| `terraform/gcs/` | Terraform for the GCS bucket that holds the DVC remote and its read-only service account |
 | `.github/workflows/` | CI: build, scan and push the training image to GHCR |
 | `docs/` | Requirements, image size and Trivy results, U1 report |
 
@@ -196,13 +197,13 @@ The image runs the three stages once and logs the run to the cluster MLflow. It 
 mounted read-only at run time.
 
 ```bash
-docker pull ghcr.io/kalbasa28/mlops_1:sha-5702666bc8f3
+docker pull ghcr.io/kalbasa28/mlops_1:sha-719bd4f0138e
 
 docker run --rm --network kind \
   -e MLFLOW_TRACKING_URI=http://mlops-control-plane:30500 \
   -e MLFLOW_EXPERIMENT_NAME=predictive-maintenance \
   -v "$PWD/data/raw/ai4i2020.csv:/app/data/raw/ai4i2020.csv:ro" \
-  ghcr.io/kalbasa28/mlops_1:sha-5702666bc8f3
+  ghcr.io/kalbasa28/mlops_1:sha-719bd4f0138e
 ```
 
 The GitHub Actions workflow (`.github/workflows/train-image.yml`) builds the image on every push to `main`, natively for
@@ -217,8 +218,9 @@ Size and the Trivy scan results: [`docs/docker-image.md`](docs/docker-image.md).
 
 ## 10. DVC remote on Google Cloud Storage (Terraform)
 
-The DVC remote is a GCS bucket defined as code in `terraform/gcs/`: the Cloud Storage API and one bucket
-(`<project_id>-dvc`, region `europe-central2`, private, uniform bucket-level access). To create your own copy you need
+The DVC remote is a GCS bucket defined as code in `terraform/gcs/`: the Cloud Storage and IAM APIs, one bucket
+(`<project_id>-dvc`, region `europe-central2`, private, uniform bucket-level access) and a service account `dvc-reader`
+that may only read objects in this bucket (used by the training Job, section 11). To create your own copy you need
 a GCP project with billing enabled.
 
 ```bash
@@ -229,7 +231,7 @@ gcloud auth application-default login
 cd terraform/gcs
 # set project_id in terraform.tfvars to <your-project-id>
 terraform init
-terraform plan -out=tfplan   # review: 2 resources to add
+terraform plan -out=tfplan   # review: 5 resources to add
 terraform apply tfplan
 cd ../..
 
@@ -245,13 +247,61 @@ dvc push
   it owns the bucket.
 - The bucket has `force_destroy = false`, so `terraform destroy` refuses to delete it while it holds data.
 
+## 11. Training as a Kubernetes Job
+
+`k8s/train-job.yaml` runs the published training image inside the cluster. One pod, two containers, the same image:
+
+| Container | Does | Sees |
+|---|---|---|
+| `pull-data` (initContainer) | `dvc pull` of the raw CSV from the GCS remote, copies it to a shared `emptyDir` | the GCS key (Secret `dvc-reader-key`) |
+| `train` | prepare → train → evaluate, logs the run to `http://mlflow:5000` | the CSV as one read-only file; no cloud credentials |
+
+The image tag is pinned in the manifest (`sha-<commit>`), and `params.yaml` and the DVC pointer are baked into that
+image, so the tag alone decides code, params and data version.
+
+Needs sections 3 and 10 first (cluster with MLflow, bucket with the data pushed). Create the key for the read-only
+service account and put it straight into a Secret (the key is never written to a file):
+
+```bash
+gcloud iam service-accounts keys create - \
+  --iam-account=dvc-reader@mlops-512019.iam.gserviceaccount.com \
+  | kubectl create secret generic dvc-reader-key -n mlops --from-file=key.json=/dev/stdin
+```
+
+Run the Job and follow it:
+
+```bash
+kubectl apply -f k8s/train-job.yaml
+kubectl wait -n mlops --for=condition=complete job/train --timeout=600s
+kubectl logs -n mlops job/train -c pull-data
+kubectl logs -n mlops job/train -c train
+```
+
+The new run appears in the MLflow UI with `git_commit` = the commit the image was built from. With the committed params,
+its test metrics are identical to a `dvc repro` on the Mac.
+
+- A Job runs once. To run it again: `kubectl delete job train -n mlops`, then `kubectl apply` again. Finished Jobs
+  are deleted automatically after 24 h (`ttlSecondsAfterFinished`).
+- To train a new image: push to `main`, wait for the CI build, then set both `image:` lines in `k8s/train-job.yaml`
+  to the new `sha-<commit>` tag in a separate commit (the manifest cannot name the image of its own commit).
+- The bucket URL comes from `.dvc/config` inside the image. With your own bucket, change the `gcs` remote URL in
+  `.dvc/config` itself (not `--local`) and rebuild the image.
+- Service account keys do not expire. When the cluster is deleted, the key in GCP stays valid: list and delete old keys
+  after creating a new one:
+
+```bash
+gcloud iam service-accounts keys list --iam-account=dvc-reader@mlops-512019.iam.gserviceaccount.com --managed-by=user
+gcloud iam service-accounts keys delete <old-key-id> --iam-account=dvc-reader@mlops-512019.iam.gserviceaccount.com
+```
+
 ## Stop and clean up
 
 ```bash
 kind delete cluster --name mlops
 ```
 
-This deletes the cluster, including all MLflow runs and artifacts. Quitting Docker Desktop instead only pauses it:
+This deletes the cluster, including all MLflow runs and artifacts, and the only copy of the `dvc-reader` key.
+Delete that key in GCP too (section 11). Quitting Docker Desktop instead only pauses it:
 after a restart the cluster, PostgreSQL and MLflow come back with all runs.
 
 ## Troubleshooting
@@ -265,3 +315,5 @@ after a restart the cluster, PostgreSQL and MLflow come back with all runs.
 | `dvc pull`/`push`: `CERTIFICATE_VERIFY_FAILED` | The python.org installer on macOS ships without root certificates. Run `/Applications/Python 3.14/Install Certificates.command` once |
 | `dvc pull`/`push`: `403` or `401` from `storage.googleapis.com` | No access to the bucket, or no credentials: run `gcloud auth application-default login`; ask the owner for access or use your own bucket (section 10) |
 | `dvc pull`/`push` prints `I... fork_posix.cc` lines | Harmless log lines from Google's gRPC library |
+| Job pod stuck in `Init:0/1` / `ContainerCreating`, event `secret "dvc-reader-key" not found` | Create the Secret (section 11), then delete and re-apply the Job |
+| `pull-data` log: `401` / `403` from GCS | Key deleted or revoked, or the service account lost its bucket role: create a new key, recreate the Secret, re-run the Job |
