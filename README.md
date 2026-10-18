@@ -6,7 +6,7 @@ dataset (10,000 machine runs, 3.4% failures). The MLflow Tracking Server runs in
 backed by PostgreSQL and a persistent volume for artifacts.
 
 ```
-Mac / laptop                                   kind cluster "mlops" (one Docker container)
+laptop                                   kind cluster "mlops" (one Docker container)
 ────────────                                   ─────────────────────────────────────────────
 dvc repro ── prepare → train → evaluate        namespace mlops
                          │                       Service mlflow (NodePort 30500)
