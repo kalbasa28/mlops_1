@@ -1,0 +1,5 @@
+*
+!src/*.py
+!params.yaml
+!requirements-train.txt
+!data/raw/ai4i2020.csv.dvc

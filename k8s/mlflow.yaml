@@ -52,6 +52,8 @@ spec:
             - postgresql+psycopg2://$(DB_USER):$(DB_PASSWORD)@postgres:5432/mlflow
             - --artifacts-destination
             - /mlflow/artifacts
+            - --allowed-hosts
+            - localhost:*,127.0.0.1:*,10.*,mlops-control-plane:30500,mlflow:5000,mlflow.mlops.svc.cluster.local:5000
           volumeMounts:
             - name: artifacts
               mountPath: /mlflow/artifacts

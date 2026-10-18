@@ -20,7 +20,7 @@ SKOPS_TRUSTED_TYPES = ["sklearn.tree._tree.Tree"]
 
 
 def git_commit() -> str:
-    return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    return os.environ.get("GIT_COMMIT") or subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
 
 
 def dvc_raw_md5() -> str:
