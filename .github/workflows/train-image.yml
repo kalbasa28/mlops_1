@@ -1,0 +1,128 @@
+name: Training image
+
+on:
+  push:
+    branches: ['main']
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build / ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set image name and tag
+        id: meta
+        run: |
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "tag=sha-${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
+
+      - name: Build the image locally
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          docker build --platform "linux/$ARCH" \
+            -f docker/Dockerfile \
+            --build-arg "GIT_COMMIT=$GITHUB_SHA" \
+            -t mlops-train:ci .
+
+      - name: Smoke test (non-root, packages import, commit baked in)
+        run: |
+          docker run --rm --entrypoint python mlops-train:ci -c '
+          import os, sklearn, mlflow, skops
+          assert os.getuid() != 0, "container must not run as root"
+          assert os.environ["GIT_COMMIT"] == "${{ github.sha }}", "GIT_COMMIT not baked in"
+          print("ok", sklearn.__version__, mlflow.__version__)
+          '
+
+      - name: Trivy gate - block publishing on fixable CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.75.0
+          image-ref: mlops-train:ci
+          scanners: vuln
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+
+      - name: Trivy full report (all severities)
+        if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.75.0
+          image-ref: mlops-train:ci
+          scanners: vuln
+          exit-code: '0'
+          format: json
+          output: trivy-train-${{ matrix.arch }}.json
+
+      - name: Upload the Trivy report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: trivy-train-${{ matrix.arch }}
+          path: trivy-train-${{ matrix.arch }}.json
+          if-no-files-found: warn
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push the scanned image under its architecture tag
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          docker tag mlops-train:ci "$IMAGE:$TAG-$ARCH"
+          docker push "$IMAGE:$TAG-$ARCH"
+
+  publish:
+    name: publish multi-arch tag
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Join amd64 + arm64 into one sha-<commit> tag
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          tag="sha-${GITHUB_SHA:0:12}"
+          docker buildx imagetools create --tag "$image:$tag" \
+            "$image:$tag-amd64" "$image:$tag-arm64"
+          docker buildx imagetools inspect "$image:$tag"
