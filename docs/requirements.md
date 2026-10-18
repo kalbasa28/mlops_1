@@ -13,8 +13,7 @@ to fail, so they can be inspected before they break.
 - Scope of U1: a reproducible training pipeline with experiment tracking in a local Kubernetes
   cluster. Serving / an inference API is out of scope (U2).
 - Because of the cost asymmetry, **recall** (failures caught) is the main quality metric and
-  **precision** is a floor that limits false alarms. **Accuracy is not a KPI**: a model that always
-  predicts "no failure" already reaches 0.966 accuracy with recall 0.
+  **precision** is a floor that limits false alarms.
 
 ## 2. Functional requirements
 
