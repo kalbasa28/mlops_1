@@ -1,63 +1,8 @@
 # Predictive maintenance: MLOps pipeline (U1)
 
-Reproducible ML pipeline (DVC + MLflow) for predicting machine failure on the
-[AI4I 2020 Predictive Maintenance](https://archive.ics.uci.edu/dataset/601/ai4i+2020+predictive+maintenance+dataset)
-dataset (10,000 machine runs, 3.4% failures). The MLflow Tracking Server runs in a local Kubernetes (`kind`) cluster,
-backed by PostgreSQL and a persistent volume for artifacts.
+Repo URL: https://github.com/kalbasa28/mlops_1
 
-```
-laptop                                   kind cluster "mlops" (one Docker container)
-────────────                                   ─────────────────────────────────────────────
-dvc repro ── prepare → train → evaluate        namespace mlops
-                         │                       Service mlflow (NodePort 30500)
-                         └─ HTTP 127.0.0.1:5001 ──→ Pod mlflow:5000 ── PVC mlflow-artifacts (models)
-                                                       └─→ Service postgres:5432 → Pod postgres ── PVC postgres-data (runs, params, metrics)
-```
-
-## At a glance
-
-| What | Where |
-|---|---|
-| MLflow UI and API | <http://127.0.0.1:5001> (Mac port 5001 → kind node port 30500 → pod port 5000) |
-| MLflow login | none (no authentication in the core U1) |
-| PostgreSQL | inside the cluster only (`postgres:5432`), not exposed to the Mac. Credentials are in the Secret `postgres-credentials` |
-| MLflow experiment | `predictive-maintenance` |
-| DVC remote | `gs://mlops-512019-dvc` (private GCS bucket, created with Terraform in `terraform/gcs/`) |
-| Training in the cluster | Kubernetes Job `train` in namespace `mlops` (`k8s/train-job.yaml`), section 11 |
-| Test metrics of the last run | `metrics.json` (`dvc metrics show`) |
-| Training image | `ghcr.io/kalbasa28/mlops_1:sha-<first 12 chars of commit>` (amd64 + arm64), see [`docs/docker-image.md`](docs/docker-image.md) |
-| Requirements (FR/NFR) | [`docs/requirements.md`](docs/requirements.md) v1.1 |
-| Report | [`docs/u1-report.md`](docs/u1-report.md) |
-
-## Repository layout
-
-| Path | Contents |
-|---|---|
-| `src/` | Pipeline stages: `prepare_data.py`, `train.py`, `evaluate.py`, shared `metrics.py` |
-| `dvc.yaml`, `dvc.lock` | Pipeline definition and the hashes of its last run |
-| `params.yaml` | Hyperparameters (`prepare.*`, `train.*`) |
-| `reproduce.py` | Re-runs a historical MLflow run and compares its metrics |
-| `data/raw/ai4i2020.csv.dvc` | DVC pointer to the raw dataset (the CSV itself is not in Git) |
-| `docker/` | `Dockerfile` (training image), `mlflow-server.Dockerfile` (MLflow + PostgreSQL driver) |
-| `k8s/` | `kind` cluster config, namespace, PostgreSQL and MLflow manifests, training Job |
-| `terraform/gcs/` | Terraform for the GCS bucket that holds the DVC remote and its read-only service account |
-| `.github/workflows/` | CI: build, scan and push the training image to GHCR |
-| `docs/` | Requirements, image size and Trivy results, U1 report |
-
-## Prerequisites
-
-Tested on macOS (Apple Silicon) with these versions:
-
-| Tool | Version |
-|---|---|
-| Python | 3.14 |
-| Docker (Docker Desktop) | 29.6 |
-| kind | 0.33.0 |
-| kubectl | 1.36 |
-| openssl, curl, unzip | any |
-| Terraform, gcloud CLI | 1.16, any (only to create your own DVC remote bucket, section 10) |
-
-Docker needs about 4 GB of RAM for the cluster. Mac port 5001 must be free. Port 5000 is not used, because macOS AirPlay holds it.
+## How to run it
 
 ## 1. Clone and create the Python environment
 
