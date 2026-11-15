@@ -17,6 +17,7 @@ RAW_DVC_FILE = "data/raw/ai4i2020.csv.dvc"
 TRAIN = "data/processed/train.csv"
 TARGET = "Machine failure"
 SKOPS_TRUSTED_TYPES = ["sklearn.tree._tree.Tree"]
+REGISTERED_MODEL_NAME = "predictive-maintenance"
 
 
 def git_commit() -> str:
@@ -50,12 +51,15 @@ def main() -> None:
     mlflow.set_experiment(os.environ.get("MLFLOW_EXPERIMENT_NAME", "predictive-maintenance"))
     run_name = f"rf-n{params['n_estimators']}-d{params['max_depth']}-cw{params['class_weight']}"
 
-    with mlflow.start_run(run_name=run_name) as run:
+    mlflow.set_system_metrics_sampling_interval(1)
+    with mlflow.start_run(run_name=run_name, log_system_metrics=True) as run:
         mlflow.log_params(flatten_params(all_params))
         mlflow.set_tags({
             "git_commit": git_commit(),
             "dvc_raw_md5": dvc_raw_md5(),
             "model_family": "RandomForestClassifier",
+            "seed.prepare": all_params["prepare"]["random_seed"],
+            "seed.train": params["random_seed"],
         })
         mlflow.log_input(
             from_pandas(train, source=TRAIN, targets=TARGET, name="train"),
@@ -79,6 +83,7 @@ def main() -> None:
             name="model",
             input_example=x_train.head(3),
             skops_trusted_types=SKOPS_TRUSTED_TYPES,
+            registered_model_name=REGISTERED_MODEL_NAME,
         )
         mlflow.log_metrics(train_metrics, model_id=info.model_id)
 
