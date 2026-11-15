@@ -1,6 +1,6 @@
-# Predictive Maintenance Pipeline - Requirements v1.1
+# Predictive Maintenance Pipeline - Requirements v1.2
 
-Date: 2026-10-18 | Author: kalbasa28
+Date: 2026-11-15 | Author: kalbasa28
 
 ## 1. Problem
 
@@ -11,7 +11,9 @@ to fail, so they can be inspected before they break.
 - Data: AI4I 2020 Predictive Maintenance (UCI), 10,000 machine runs, binary target `Machine failure`
   (339 failures, about 3.4%).
 - Scope of U1: a reproducible training pipeline with experiment tracking in a local Kubernetes
-  cluster. Serving / an inference API is out of scope (U2).
+  cluster.
+- Scope of U2: hyperparameter search, a model registry, and an inference API in the same cluster
+  that serves the registered `@champion` model, released through CI/CD with a quality gate.
 - Because of the cost asymmetry, **recall** (failures caught) is the main quality metric and
   **precision** is a floor that limits false alarms.
 
@@ -26,6 +28,8 @@ to fail, so they can be inspected before they break.
 | FR-05 | The MLflow Tracking Server runs in the local Kubernetes cluster and is reachable from the laptop             | Must |
 | FR-06 | `python reproduce.py <run_id>` re-runs a historical MLflow run (its git commit, data version and params), compares its test metrics with the original and tags the new run `reproduces=<run_id>` | Must |
 | FR-07 | Every MLflow run is tagged with the git commit (`git_commit`) and the raw data md5 (`dvc_raw_md5`) it was trained from | Must |
+| FR-08 | `python src/tune.py` runs a hyperparameter search (>= 5 combinations, cross-validated on the training set only) logged as one MLflow parent run with one nested child run per combination, and picks the combination with the highest recall among those with precision >= 0.30 | Must |
+| FR-09 | Every model trained by `train` is registered as a new version of `predictive-maintenance` in the MLflow Model Registry; `python src/promote.py <version>` points the alias `@champion` at a version | Must |
 
 ## 3. Non-functional requirements
 
@@ -50,9 +54,20 @@ The test set has 2,000 rows with 68 failures, so one failure equals about 1.5 pe
 | NFR-07 | Traceability    | Every run points to the exact code that made it | 100% of runs have a `git_commit` tag that exists in the Git history | MLflow tags vs `git cat-file -e <commit>` | 17 of 17 runs (100%) |
 | NFR-08 | Data version    | Every run points to the exact data that made it | 100% of runs have `dvc_raw_md5` equal to the raw data md5 in `dvc.lock` at that commit | MLflow tag vs `dvc.lock` / `data/raw/ai4i2020.csv.dvc` | 17 of 17 runs (100%), md5 `f0adaa9c5e25366c6df1cc2684479871` |
 
+### 3.3 Training tracking and model registry (new in v1.2)
+
+| ID     | Category     | Requirement                                     | KPI                                   | How it is checked                                   | Measured (v1.2) |
+|--------|--------------|-------------------------------------------------|---------------------------------------|-----------------------------------------------------|-----------------|
+| NFR-09 | Tracking     | Every training run is fully tracked             | 100% of `train` runs have params, system metrics, the training dataset with its digest, `git_commit` and both seed tags (`seed.prepare`, `seed.train`), and the model with its environment | MLflow run page: Parameters, System metrics, Datasets, Tags, Artifacts | 2 of 2 U2 runs (`f6d7f48b`, `9a587bdb`): all present, dataset digest `41fc9698` |
+| NFR-10 | Search cost  | The hyperparameter search stays cheap enough to repeat | `tune.py` (18 combinations x 5 folds) <= 5 min on a laptop CPU | Duration of the `hpo-grid` run in MLflow | 6.3 s (run `5785f491`, 18 child runs, 18 trial steps) |
+| NFR-11 | Traceability | Every registry version points to the run that produced it | 100% of `predictive-maintenance` versions have a source run with a `git_commit` tag | MLflow Models page: version -> source run -> tags | 2 of 2 versions (v1 -> run `f6d7f48b`, commit `a0823f8`; v2 -> run `9a587bdb`, commit `db7b93b`); `@champion` -> v2 |
+
+Search result (run `5785f491`): balanced, depth 8, 200 trees, CV recall 0.804 / precision 0.445. `params.yaml` follows the search; version 2 test metrics: recall 0.853 (58/68), precision 0.411.
+
 ## 4. Change history
 
 | Version | Date       | Author    | Changes                                    |
 |---------|------------|-----------|--------------------------------------------|
 | 1.0     | 2026-10-14 | kalbasa28 | Initial version: problem, FR-01-FR-05, NFR-01-NFR-05 |
 | 1.1     | 2026-10-18 | kalbasa28 | Added FR-06 (reproduce), FR-07 (run tags), tracking/reproducibility NFR-06-NFR-08, and a "Measured" column filled from the cluster runs. |
+| 1.2     | 2026-11-15 | kalbasa28 | U2 scope. Added FR-08 (hyperparameter search), FR-09 (model registry + `@champion`), NFR-09 (full training tracking), NFR-10 (search cost), NFR-11 (registry traceability). `params.yaml` switched to the search's pick (200 trees). |
