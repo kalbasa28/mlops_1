@@ -52,6 +52,7 @@ docker build -f docker/mlflow-server.Dockerfile -t mlflow-server:3.17.1-pg docke
 kind load docker-image mlflow-server:3.17.1-pg --name mlops
 
 kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/mlflow-config.yaml
 kubectl create secret generic postgres-credentials -n mlops \
   --from-literal=username=mlflow \
   --from-literal=password="$(openssl rand -hex 16)"
@@ -68,6 +69,8 @@ The last command waits until MLflow answers and prints `OK`. The Service can lag
   `kubectl config use-context kind-mlops`.
 - The cluster name must be `mlops`. Docker containers reach MLflow through the node name `mlops-control-plane`.
 - The MLflow server image is built locally and loaded into kind (`kind load`). It is not pulled from a registry.
+- `k8s/mlflow-config.yaml` is the ConfigMap `mlflow-config` with the in-cluster MLflow address (`http://mlflow:5000`) and
+  experiment name. The training Job and the inference API read it with `envFrom`; neither manifest contains the URI.
 - The PostgreSQL password is random and exists only in the Secret, never in Git. To read it:
   `kubectl get secret postgres-credentials -n mlops -o jsonpath='{.data.password}' | base64 -d`.
 - Runs survive pod restarts: the database and artifacts live on PersistentVolumeClaims (NFR-04). Test it with
@@ -201,8 +204,10 @@ dvc push
 | `pull-data` (initContainer) | `dvc pull` of the raw CSV from the GCS remote, copies it to a shared `emptyDir` | the GCS key (Secret `dvc-reader-key`) |
 | `train` | prepare → train → evaluate, logs the run to `http://mlflow:5000` | the CSV as one read-only file; no cloud credentials |
 
-The image tag is pinned in the manifest (`sha-<commit>`), and `params.yaml` and the DVC pointer are baked into that
-image, so the tag alone decides code, params and data version.
+The image tag is pinned in the manifest (`sha-<commit>`), so the tag decides the code and the data version (the DVC
+pointer is baked into the image). The hyperparameters come from the ConfigMap `train-params`, mounted at
+`/etc/train-params/params.yaml` and passed to the scripts with `PARAMS_FILE`. The MLflow address comes from the
+ConfigMap `mlflow-config` (section 3).
 
 Needs sections 3 and 10 first (cluster with MLflow, bucket with the data pushed). Create the key for the read-only
 service account and put it straight into a Secret (the key is never written to a file):
@@ -211,6 +216,12 @@ service account and put it straight into a Secret (the key is never written to a
 gcloud iam service-accounts keys create - \
   --iam-account=dvc-reader@mlops-512019.iam.gserviceaccount.com \
   | kubectl create secret generic dvc-reader-key -n mlops --from-file=key.json=/dev/stdin
+```
+
+Create the params ConfigMap from `params.yaml` (the same command updates it after you edit `params.yaml`):
+
+```bash
+kubectl create configmap train-params -n mlops --from-file=params.yaml --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 Run the Job and follow it:
@@ -222,8 +233,21 @@ kubectl logs -n mlops job/train -c pull-data
 kubectl logs -n mlops job/train -c train
 ```
 
-The new run appears in the MLflow UI with `git_commit` = the commit the image was built from. With the committed params,
-its test metrics are identical to a `dvc repro` on the Mac.
+The new run appears in the MLflow UI with `git_commit` = the commit the image was built from and the tag
+`params_file=/etc/train-params/params.yaml`. With the committed params, its test metrics are identical to a `dvc repro`
+on the Mac. Like every training run, it registers a new version of `predictive-maintenance`; `@champion` does not move.
+
+To try other hyperparameters without a new image, change them in the ConfigMap and run the Job again:
+
+```bash
+kubectl edit configmap train-params -n mlops       # e.g. train.n_estimators: 200 -> 50
+kubectl delete job train -n mlops --ignore-not-found
+kubectl apply -f k8s/train-job.yaml
+```
+
+The run's params in MLflow are what was actually used. They can differ from `params.yaml` at the run's `git_commit`;
+the tag `params_file` shows the run read them from the ConfigMap. `reproduce.py` rebuilds params from the MLflow run,
+so such runs are still reproducible. Recreate the ConfigMap from `params.yaml` (command above) to go back.
 
 - A Job runs once. To run it again: `kubectl delete job train -n mlops`, then `kubectl apply` again. Finished Jobs
   are deleted automatically after 24 h (`ttlSecondsAfterFinished`).
@@ -306,3 +330,4 @@ after a restart the cluster, PostgreSQL and MLflow come back with all runs.
 | `pull-data` log: `401` / `403` from GCS | Key deleted or revoked, or the service account lost its bucket role: create a new key, recreate the Secret, re-run the Job |
 | API pod in `CrashLoopBackOff`, log: `Registered model alias champion not found` | No version has the alias yet: `python src/promote.py <version>`, then `kubectl -n mlops rollout restart deploy/api` |
 | API pod `ErrImageNeverPull` | The image is not in the kind node: `kind load docker-image mlops-api:local --name mlops` |
+| Pod stuck in `CreateContainerConfigError` or `ContainerCreating`, event `configmap "mlflow-config" not found` (or `"train-params"`) | Create the ConfigMap: `kubectl apply -f k8s/mlflow-config.yaml` (section 3) / the `train-params` command in section 11 |

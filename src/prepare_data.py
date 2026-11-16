@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 from features import FEATURE_COLUMNS, TYPE_CODES
 
 RAW = "data/raw/ai4i2020.csv"
-PARAMS_FILE = "params.yaml"
+PARAMS_FILE = os.environ.get("PARAMS_FILE", "params.yaml")
 OUT_DIR = "data/processed"
 TARGET = "Machine failure"
 ID_COLUMNS = ["UDI", "Product ID"]

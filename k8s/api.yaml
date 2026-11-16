@@ -24,9 +24,9 @@ spec:
           imagePullPolicy: Never
           ports:
             - containerPort: 8000
-          env:
-            - name: MLFLOW_TRACKING_URI
-              value: http://mlflow:5000
+          envFrom:
+            - configMapRef:
+                name: mlflow-config
           lifecycle:
             preStop:
               sleep:

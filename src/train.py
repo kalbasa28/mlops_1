@@ -12,7 +12,7 @@ from sklearn.ensemble import RandomForestClassifier
 
 from metrics import compute_metrics
 
-PARAMS_FILE = "params.yaml"
+PARAMS_FILE = os.environ.get("PARAMS_FILE", "params.yaml")
 RAW_DVC_FILE = "data/raw/ai4i2020.csv.dvc"
 TRAIN = "data/processed/train.csv"
 TARGET = "Machine failure"
@@ -60,6 +60,7 @@ def main() -> None:
             "model_family": "RandomForestClassifier",
             "seed.prepare": all_params["prepare"]["random_seed"],
             "seed.train": params["random_seed"],
+            "params_file": PARAMS_FILE,
         })
         mlflow.log_input(
             from_pandas(train, source=TRAIN, targets=TARGET, name="train"),
