@@ -4,3 +4,5 @@
 !requirements-train.txt
 !data/raw/ai4i2020.csv.dvc
 !.dvc/config
+!requirements-api.txt
+!requirements-model.txt

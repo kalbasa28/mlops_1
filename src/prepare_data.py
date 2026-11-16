@@ -4,18 +4,20 @@ import pandas as pd
 import yaml
 from sklearn.model_selection import train_test_split
 
+from features import FEATURE_COLUMNS, TYPE_CODES
+
 RAW = "data/raw/ai4i2020.csv"
 PARAMS_FILE = "params.yaml"
 OUT_DIR = "data/processed"
 TARGET = "Machine failure"
 ID_COLUMNS = ["UDI", "Product ID"]
 TARGET_LEAKING_FAILURE_MODES = ["TWF", "HDF", "PWF", "OSF", "RNF"]
-TYPE_CODES = {"L": 0, "M": 1, "H": 2}
 
 
 def clean(df: pd.DataFrame) -> pd.DataFrame:
     df = df.drop(columns=ID_COLUMNS + TARGET_LEAKING_FAILURE_MODES)
-    return df.assign(Type=df["Type"].map(TYPE_CODES))
+    df = df.assign(Type=df["Type"].map(TYPE_CODES))
+    return df[FEATURE_COLUMNS + [TARGET]]
 
 
 def main() -> None:

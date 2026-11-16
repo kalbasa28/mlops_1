@@ -3,6 +3,7 @@ stages:
     cmd: python src/prepare_data.py
     deps:
       - src/prepare_data.py
+      - src/features.py
       - data/raw/ai4i2020.csv
     params:
       - prepare

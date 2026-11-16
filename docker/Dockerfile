@@ -4,7 +4,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 FROM base AS builder
-COPY requirements-train.txt /tmp/
+COPY requirements-model.txt requirements-train.txt /tmp/
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir --no-compile -r /tmp/requirements-train.txt
 

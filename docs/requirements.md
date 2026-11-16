@@ -1,6 +1,6 @@
-# Predictive Maintenance Pipeline - Requirements v1.2
+# Predictive Maintenance Pipeline - Requirements v1.3
 
-Date: 2026-11-15 | Author: kalbasa28
+Date: 2026-11-16 | Author: kalbasa28
 
 ## 1. Problem
 
@@ -30,6 +30,7 @@ to fail, so they can be inspected before they break.
 | FR-07 | Every MLflow run is tagged with the git commit (`git_commit`) and the raw data md5 (`dvc_raw_md5`) it was trained from | Must |
 | FR-08 | `python src/tune.py` runs a hyperparameter search (>= 5 combinations, cross-validated on the training set only) logged as one MLflow parent run with one nested child run per combination, and picks the combination with the highest recall among those with precision >= 0.30 | Must |
 | FR-09 | Every model trained by `train` is registered as a new version of `predictive-maintenance` in the MLflow Model Registry; `python src/promote.py <version>` points the alias `@champion` at a version | Must |
+| FR-10 | An inference API in the cluster serves `predictive-maintenance@champion` from the registry (no model file in the image): `GET /health` returns the served model version, `POST /predict` takes raw sensor values and returns the failure prediction, its probability and the model version; invalid input is rejected with 422 | Must |
 
 ## 3. Non-functional requirements
 
@@ -64,6 +65,18 @@ The test set has 2,000 rows with 68 failures, so one failure equals about 1.5 pe
 
 Search result (run `dd15067a`): balanced, depth 8, 200 trees, CV recall 0.804 / precision 0.445. `params.yaml` follows the search; version 4 test metrics: recall 0.853 (58/68), precision 0.411.
 
+### 3.4 Inference (new in v1.3)
+
+Load test: `load_test.py`, 100 sequential `POST /predict` requests from `test.csv` rows after 10 unmeasured warm-up requests, 2 API replicas, model version 4, kind on Apple Silicon. Details and the full results in `docs/inference-api.md`.
+
+| ID     | Category     | Requirement                                     | KPI                                   | How it is checked                                   | Measured (v1.3) |
+|--------|--------------|-------------------------------------------------|---------------------------------------|-----------------------------------------------------|-----------------|
+| NFR-12 | Latency      | Predictions are fast enough for interactive use | p95 <= 50 ms in-cluster, 100 requests | `load_test.py --url http://api:8000` from a pod      | p95 5.9-7.2 ms (3 runs, 0 errors); 7.9-9.6 ms from the Mac via port-forward |
+| NFR-13 | Throughput   | One client is not slowed down by the service    | >= 50 req/s, single sequential client | `throughput_rps` from the same test                 | 175-185 req/s |
+| NFR-14 | Model size   | The model loads quickly at pod start            | Registered model <= 50 MB             | Size of the version's artifacts in the registry     | 5.9 MB (`model.skops` 6,153,538 bytes) |
+| NFR-15 | Image size   | The API image stays small                       | `mlops-api` image <= 1 GB             | `docker image ls`                                   | 546 MB |
+| NFR-16 | Availability | Restarting the API (new `@champion`, rollback) barely affects clients | <= 1% failed requests per `kubectl rollout restart deploy/api` | `load_test.py --requests 4000` from a separate pod while the restart runs | 8 restarts: worst 13/4000 (0.33%), 7 of 8 with <= 1 error; 14/32000 overall. Without the `preStop` hook: 73/4000 (1.8%), fails |
+
 ## 4. Change history
 
 | Version | Date       | Author    | Changes                                    |
@@ -71,3 +84,4 @@ Search result (run `dd15067a`): balanced, depth 8, 200 trees, CV recall 0.804 / 
 | 1.0     | 2026-10-14 | kalbasa28 | Initial version: problem, FR-01-FR-05, NFR-01-NFR-05 |
 | 1.1     | 2026-10-18 | kalbasa28 | Added FR-06 (reproduce), FR-07 (run tags), tracking/reproducibility NFR-06-NFR-08, and a "Measured" column filled from the cluster runs. |
 | 1.2     | 2026-11-15 | kalbasa28 | U2 scope. Added FR-08 (hyperparameter search), FR-09 (model registry + `@champion`), NFR-09 (full training tracking), NFR-10 (search cost), NFR-11 (registry traceability). `params.yaml` switched to the search's pick (200 trees). |
+| 1.3     | 2026-11-16 | kalbasa28 | Added FR-10 (inference API serving `@champion`) and inference NFR-12 (p95 latency), NFR-13 (throughput), NFR-14 (model size), NFR-15 (image size), NFR-16 (availability during restarts), all measured. |

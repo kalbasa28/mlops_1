@@ -7,10 +7,14 @@ stages:
       hash: md5
       md5: f0adaa9c5e25366c6df1cc2684479871
       size: 522048
+    - path: src/features.py
+      hash: md5
+      md5: 94a9de1927675fc17400ccdda19d8d5e
+      size: 203
     - path: src/prepare_data.py
       hash: md5
-      md5: 701b3709af6b98fdca4f653807e0ed17
-      size: 1148
+      md5: 0be829dcc5195562437f8c2383092ecd
+      size: 1200
     params:
       params.yaml:
         prepare:

@@ -239,6 +239,48 @@ gcloud iam service-accounts keys list --iam-account=dvc-reader@mlops-512019.iam.
 gcloud iam service-accounts keys delete <old-key-id> --iam-account=dvc-reader@mlops-512019.iam.gserviceaccount.com
 ```
 
+## 12. Inference API
+
+`src/api.py` (FastAPI) serves the model that the alias `predictive-maintenance@champion` points to in the cluster MLflow
+registry. At startup it loads that version and keeps it in memory. The image contains no model file.
+
+Needs section 3 (cluster with MLflow) and at least one registered model version with the alias. Every `dvc repro` registers
+a new version; point the alias at one:
+
+```bash
+python src/promote.py <version>     # e.g. 1 on a fresh cluster; versions are listed in the MLflow UI under Models
+```
+
+Build, load and deploy (2 replicas behind the ClusterIP Service `api`):
+
+```bash
+docker build -f docker/api.Dockerfile --build-arg GIT_COMMIT=$(git rev-parse HEAD) -t mlops-api:local .
+kind load docker-image mlops-api:local --name mlops
+kubectl apply -f k8s/api.yaml
+kubectl -n mlops rollout status deploy/api
+```
+
+Call it from the Mac:
+
+```bash
+kubectl -n mlops port-forward svc/api 8000:8000      # keep running in a second terminal
+curl localhost:8000/health
+curl -X POST localhost:8000/predict -H 'Content-Type: application/json' \
+  -d '{"type": "L", "air_temperature_k": 298.9, "process_temperature_k": 309.1,
+       "rotational_speed_rpm": 2861, "torque_nm": 4.6, "tool_wear_min": 143}'
+```
+
+`/health` returns the served model version; `/predict` returns `failure`, `failure_probability` and `model_version`.
+Interactive docs: <http://localhost:8000/docs>.
+
+- **New model:** move the alias (`python src/promote.py <version>`), then `kubectl -n mlops rollout restart deploy/api`.
+  Running pods keep the version they loaded at startup until they are replaced. Rollback is the same with the older version.
+- The restart replaces one pod at a time and stops an old pod only after the new one has loaded its model
+  (`maxUnavailable: 0`, readiness probe on `/health`, `preStop` sleep), so clients see at most a few failed requests (NFR-16).
+- Load test (100 requests, p95): `python load_test.py` while the port-forward runs.
+
+Endpoints, load test results (p95, throughput), the restart test and model size: [`docs/inference-api.md`](docs/inference-api.md).
+
 ## Stop and clean up
 
 ```bash
@@ -262,3 +304,5 @@ after a restart the cluster, PostgreSQL and MLflow come back with all runs.
 | `dvc pull`/`push` prints `I... fork_posix.cc` lines | Harmless log lines from Google's gRPC library |
 | Job pod stuck in `Init:0/1` / `ContainerCreating`, event `secret "dvc-reader-key" not found` | Create the Secret (section 11), then delete and re-apply the Job |
 | `pull-data` log: `401` / `403` from GCS | Key deleted or revoked, or the service account lost its bucket role: create a new key, recreate the Secret, re-run the Job |
+| API pod in `CrashLoopBackOff`, log: `Registered model alias champion not found` | No version has the alias yet: `python src/promote.py <version>`, then `kubectl -n mlops rollout restart deploy/api` |
+| API pod `ErrImageNeverPull` | The image is not in the kind node: `kind load docker-image mlops-api:local --name mlops` |
