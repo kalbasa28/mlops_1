@@ -50,24 +50,31 @@ def main() -> None:
     mlflow.sklearn.autolog(max_tuning_runs=None, log_models=False)
 
     with mlflow.start_run(run_name="hpo-grid", log_system_metrics=True):
-        mlflow.set_tags({
-            "git_commit": git_commit(),
-            "dvc_raw_md5": dvc_raw_md5(),
-            "seed": seed,
-            "run_type": "hpo",
-        })
+        mlflow.set_tags(
+            {
+                "git_commit": git_commit(),
+                "dvc_raw_md5": dvc_raw_md5(),
+                "seed": seed,
+                "run_type": "hpo",
+            }
+        )
         search.fit(x_train, y_train)
 
         results = search.cv_results_
         for trial in range(len(results["params"])):
-            mlflow.log_metrics({
-                "trial/cv_recall": results["mean_test_recall"][trial],
-                "trial/cv_precision": results["mean_test_precision"][trial],
-            }, step=trial)
+            mlflow.log_metrics(
+                {
+                    "trial/cv_recall": results["mean_test_recall"][trial],
+                    "trial/cv_precision": results["mean_test_precision"][trial],
+                },
+                step=trial,
+            )
 
     best = search.best_index_
     print(f"best: {search.best_params_}")
-    print(f"  cv recall {results['mean_test_recall'][best]:.3f}, cv precision {results['mean_test_precision'][best]:.3f}")
+    print(
+        f"  cv recall {results['mean_test_recall'][best]:.3f}, cv precision {results['mean_test_precision'][best]:.3f}"
+    )
 
 
 if __name__ == "__main__":

@@ -156,7 +156,8 @@ docker run --rm --network kind \
 
 The GitHub Actions workflow (`.github/workflows/train-image.yml`) builds the image on every push to `main`, natively for
 amd64 and arm64. It smoke-tests it, scans it with Trivy (a fixable CRITICAL blocks the push) and pushes it as `sha-<commit>`.
-Never `latest`. To build locally instead:
+Never `latest`. Before any of that, a `lint` job runs `ruff check` and `ruff format --check` (config in `ruff.toml`); a lint error or an unformatted file stops the build.
+Run the same checks locally with `pip install -r requirements-dev.txt && ruff check . && ruff format --check .` (`ruff format .` fixes formatting). To build locally instead:
 
 ```bash
 docker build -f docker/Dockerfile --build-arg GIT_COMMIT=$(git rev-parse HEAD) -t mlops-train:local .

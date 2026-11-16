@@ -30,11 +30,7 @@ def dvc_raw_md5() -> str:
 
 
 def flatten_params(all_params: dict) -> dict:
-    return {
-        f"{section}.{key}": value
-        for section, values in all_params.items()
-        for key, value in values.items()
-    }
+    return {f"{section}.{key}": value for section, values in all_params.items() for key, value in values.items()}
 
 
 def main() -> None:
@@ -54,14 +50,16 @@ def main() -> None:
     mlflow.set_system_metrics_sampling_interval(1)
     with mlflow.start_run(run_name=run_name, log_system_metrics=True) as run:
         mlflow.log_params(flatten_params(all_params))
-        mlflow.set_tags({
-            "git_commit": git_commit(),
-            "dvc_raw_md5": dvc_raw_md5(),
-            "model_family": "RandomForestClassifier",
-            "seed.prepare": all_params["prepare"]["random_seed"],
-            "seed.train": params["random_seed"],
-            "params_file": PARAMS_FILE,
-        })
+        mlflow.set_tags(
+            {
+                "git_commit": git_commit(),
+                "dvc_raw_md5": dvc_raw_md5(),
+                "model_family": "RandomForestClassifier",
+                "seed.prepare": all_params["prepare"]["random_seed"],
+                "seed.train": params["random_seed"],
+                "params_file": PARAMS_FILE,
+            }
+        )
         mlflow.log_input(
             from_pandas(train, source=TRAIN, targets=TARGET, name="train"),
             context="training",
@@ -75,8 +73,7 @@ def main() -> None:
         )
         model.fit(x_train, y_train)
         train_metrics = {
-            f"train/{name}": value
-            for name, value in compute_metrics(y_train, model.predict(x_train)).items()
+            f"train/{name}": value for name, value in compute_metrics(y_train, model.predict(x_train)).items()
         }
 
         info = mlflow.sklearn.log_model(
