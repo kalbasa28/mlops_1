@@ -58,11 +58,11 @@ The test set has 2,000 rows with 68 failures, so one failure equals about 1.5 pe
 
 | ID     | Category     | Requirement                                     | KPI                                   | How it is checked                                   | Measured (v1.2) |
 |--------|--------------|-------------------------------------------------|---------------------------------------|-----------------------------------------------------|-----------------|
-| NFR-09 | Tracking     | Every training run is fully tracked             | 100% of `train` runs have params, system metrics, the training dataset with its digest, `git_commit` and both seed tags (`seed.prepare`, `seed.train`), and the model with its environment | MLflow run page: Parameters, System metrics, Datasets, Tags, Artifacts | 2 of 2 U2 runs (`f6d7f48b`, `9a587bdb`): all present, dataset digest `41fc9698` |
-| NFR-10 | Search cost  | The hyperparameter search stays cheap enough to repeat | `tune.py` (18 combinations x 5 folds) <= 5 min on a laptop CPU | Duration of the `hpo-grid` run in MLflow | 6.3 s (run `5785f491`, 18 child runs, 18 trial steps) |
-| NFR-11 | Traceability | Every registry version points to the run that produced it | 100% of `predictive-maintenance` versions have a source run with a `git_commit` tag | MLflow Models page: version -> source run -> tags | 2 of 2 versions (v1 -> run `f6d7f48b`, commit `a0823f8`; v2 -> run `9a587bdb`, commit `db7b93b`); `@champion` -> v2 |
+| NFR-09 | Tracking     | Every training run is fully tracked             | 100% of `train` runs have params, system metrics, the training dataset with its digest, `git_commit` and both seed tags (`seed.prepare`, `seed.train`), and the model with its environment | MLflow run page: Parameters, System metrics, Datasets, Tags, Artifacts | 2 of 2 U2 runs (`9b2108ef`, `1a1091f3`): all present, dataset digest `41fc9698` |
+| NFR-10 | Search cost  | The hyperparameter search stays cheap enough to repeat | `tune.py` (18 combinations x 5 folds) <= 5 min on a laptop CPU | Duration of the `hpo-grid` run in MLflow | 6.7 s (run `dd15067a`, 18 child runs, 18 trial steps) |
+| NFR-11 | Traceability | Every registry version points to the run that produced it | 100% of `predictive-maintenance` versions have a source run with a `git_commit` tag | MLflow Models page: version -> source run -> tags | v3 -> run `9b2108ef`, commit `be9e20c`; v4 -> run `1a1091f3`, commit `b349f97`; `@champion` -> v4 |
 
-Search result (run `5785f491`): balanced, depth 8, 200 trees, CV recall 0.804 / precision 0.445. `params.yaml` follows the search; version 2 test metrics: recall 0.853 (58/68), precision 0.411.
+Search result (run `dd15067a`): balanced, depth 8, 200 trees, CV recall 0.804 / precision 0.445. `params.yaml` follows the search; version 4 test metrics: recall 0.853 (58/68), precision 0.411.
 
 ## 4. Change history
 

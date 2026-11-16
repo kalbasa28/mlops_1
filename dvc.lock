@@ -54,7 +54,7 @@ stages:
       size: 2920457
     - path: models/run_id.txt
       hash: md5
-      md5: 9a1465dafaca83c1708add7aa4412e38
+      md5: b3c78b74bc579b9577b094e8f8ca4965
       size: 33
   evaluate:
     cmd: python src/evaluate.py
@@ -69,7 +69,7 @@ stages:
       size: 2920457
     - path: models/run_id.txt
       hash: md5
-      md5: 9a1465dafaca83c1708add7aa4412e38
+      md5: b3c78b74bc579b9577b094e8f8ca4965
       size: 33
     - path: src/evaluate.py
       hash: md5
