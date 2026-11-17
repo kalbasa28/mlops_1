@@ -18,7 +18,7 @@ spec:
         fsGroup: 1000
       initContainers:
         - name: pull-data
-          image: ghcr.io/kalbasa28/mlops_1:sha-26d2ce1348ac
+          image: ghcr.io/kalbasa28/mlops_1:sha-66c440dbf30e
           command: ["sh", "-c", "dvc pull data/raw/ai4i2020.csv.dvc && cp data/raw/ai4i2020.csv /shared/"]
           env:
             - name: GOOGLE_APPLICATION_CREDENTIALS
@@ -34,7 +34,7 @@ spec:
               readOnly: true
       containers:
         - name: train
-          image: ghcr.io/kalbasa28/mlops_1:sha-26d2ce1348ac
+          image: ghcr.io/kalbasa28/mlops_1:sha-66c440dbf30e
           envFrom:
             - configMapRef:
                 name: mlflow-config
