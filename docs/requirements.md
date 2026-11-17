@@ -101,9 +101,9 @@ Load test: `load_test.py`, 100 sequential `POST /predict` requests from `test.cs
 
 | ID     | Category       | Requirement                                     | KPI                                   | How it is checked                                   | Measured (v1.6) |
 |--------|----------------|-------------------------------------------------|---------------------------------------|-----------------------------------------------------|-----------------|
-| NFR-22 | Gate effectiveness | A model below the quality KPIs never gets an image or a manifest update | A gate failure skips `build`, `publish`, `deploy`: 0 images pushed, 0 manifest commits | Red run (`train.class_weight: null`) on the Actions page and in GHCR | TODO (red run) |
+| NFR-22 | Gate effectiveness | A model below the quality KPIs never gets an image or a manifest update | A gate failure skips `build`, `publish`, `deploy`: 0 images pushed, 0 manifest commits | Red run (`train.class_weight: null`) on the Actions page and in GHCR | Red run 44161770539 (`dcec6c7`, `class_weight: null`): gate FAILED, recall 0.4265 < 0.70; build, publish, deploy skipped; no `sha-dcec6c7923f9` tag on GHCR for either image (HTTP 404), no bot commit, cluster kept serving |
 | NFR-23 | Delivery time  | A good commit is ready to deploy quickly        | Push -> bot pin commit <= 20 min       | Workflow run duration                              | 5 min 50 s (run 44155723074: push of `26d2ce1` -> bot commit `3670dc6`; gate: recall 0.8529, precision 0.4113) |
-| NFR-24 | Rollback time  | A bad model is taken out of service quickly     | `promote.py <previous>` + `rollout restart` -> `/health` shows the old version in <= 2 min | Timed on the kind cluster | TODO (rollback) |
+| NFR-24 | Rollback time  | A bad model is taken out of service quickly     | `promote.py <previous>` + `rollout restart` -> `/health` shows the old version in <= 2 min | Timed on the kind cluster | 13.5 s (2026-11-17: `promote.py 4` + `rollout restart` + `rollout status`, v10 -> v4; both new pods logged `version 4`) |
 
 ## 4. Change history
 
