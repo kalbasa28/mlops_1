@@ -1,6 +1,9 @@
-# Predictive maintenance: MLOps pipeline (U1)
+# Predictive maintenance: MLOps pipeline
 
 Repo URL: https://github.com/kalbasa28/mlops_1
+
+Documents: [requirements](docs/requirements.md), [U1 report](docs/u1-report.md), [U2 report](docs/u2-report.md),
+[training image](docs/docker-image.md), [inference API](docs/inference-api.md).
 
 ## How to run it
 
@@ -96,7 +99,7 @@ dvc repro
 | Stage | Reads | Writes |
 |---|---|---|
 | `prepare` | raw CSV, `params.yaml: prepare` | `data/processed/train.csv`, `test.csv` (stratified split; drops IDs and the target-leaking failure-mode columns) |
-| `train` | `train.csv`, `params.yaml: train` | `models/model.pkl`, `models/run_id.txt`; MLflow run with params, `train/*` metrics, model, tags `git_commit` and `dvc_raw_md5` |
+| `train` | `train.csv`, `params.yaml: train` | `models/model.pkl`, `models/run_id.txt`; MLflow run with params, `train/*` metrics, model, tags `git_commit` and `dvc_raw_md5`; a new version of the registered model `predictive-maintenance` |
 | `evaluate` | model, `test.csv` | `metrics.json`; `eval/*` test metrics in the same MLflow run |
 
 The full pipeline takes about 5 seconds on a laptop CPU.
@@ -145,13 +148,14 @@ The image runs the three stages once and logs the run to the cluster MLflow. It 
 mounted read-only at run time.
 
 ```bash
-docker pull ghcr.io/kalbasa28/mlops_1:sha-719bd4f0138e
+IMAGE=$(grep -m1 -o 'ghcr.io/kalbasa28/mlops_1:sha-[0-9a-f]*' k8s/train-job.yaml)   # the tag CI pinned last
+docker pull "$IMAGE"
 
 docker run --rm --network kind \
   -e MLFLOW_TRACKING_URI=http://mlops-control-plane:30500 \
   -e MLFLOW_EXPERIMENT_NAME=predictive-maintenance \
   -v "$PWD/data/raw/ai4i2020.csv:/app/data/raw/ai4i2020.csv:ro" \
-  ghcr.io/kalbasa28/mlops_1:sha-719bd4f0138e
+  "$IMAGE"
 ```
 
 The GitHub Actions workflow (`.github/workflows/ci-cd.yml`) builds this image and the API image on every push to `main`,
@@ -260,8 +264,8 @@ so such runs are still reproducible. Recreate the ConfigMap from `params.yaml` (
 
 - A Job runs once. To run it again: `kubectl delete job train -n mlops`, then `kubectl apply` again. Finished Jobs
   are deleted automatically after 24 h (`ttlSecondsAfterFinished`).
-- To train a new image: push to `main`, wait for the CI build, then set both `image:` lines in `k8s/train-job.yaml`
-  to the new `sha-<commit>` tag in a separate commit (the manifest cannot name the image of its own commit).
+- To train a new image: push to `main` and wait for CI. Its `deploy` job commits the new `sha-<commit>` tag into
+  `k8s/train-job.yaml` (section 13); `git pull`, then run the Job again.
 - The bucket URL comes from `.dvc/config` inside the image. With your own bucket, change the `gcs` remote URL in
   `.dvc/config` itself (not `--local`) and rebuild the image.
 - Service account keys do not expire. When the cluster is deleted, the key in GCP stays valid: list and delete old keys
