@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: ghcr.io/kalbasa28/mlops_1-api:sha-a7c03b1f2468
+          image: ghcr.io/kalbasa28/mlops_1-api:sha-19c803cdfa31
           ports:
             - containerPort: 8000
           envFrom:
