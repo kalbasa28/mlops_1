@@ -4,7 +4,7 @@ prepare:
 train:
   n_estimators: 200
   max_depth: 8
-  class_weight: balanced
+  class_weight: null
   random_seed: 42
 gate:
   min_recall: 0.70
