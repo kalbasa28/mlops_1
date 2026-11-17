@@ -375,6 +375,26 @@ skipped, so no image is pushed and the manifests on `main` still point at the la
 - Emergency, without waiting for CI: `kubectl -n mlops rollout undo deploy/api` returns the API to its previous image at
   once. The cluster then differs from `main` until the next deploy.
 
+## 14. Hyperparameter search and model registry
+
+```bash
+dvc repro prepare           # tune.py reads data/processed/train.csv
+python src/tune.py          # grid search, logged as one parent run with a child run per combination
+```
+
+`tune.py` tries 18 combinations of `n_estimators`, `max_depth` and `class_weight` with 5-fold stratified
+cross-validation on the training set only (the test set stays untouched). It picks the highest CV recall among the
+combinations with CV precision >= 0.30 and prints it. In MLflow, open the run `hpo-grid` to see the child runs.
+
+To use the result, copy the printed values into `params.yaml: train` and run the pipeline (section 7). Every `train`
+run registers its model as a new version of `predictive-maintenance` in the MLflow registry (Models tab).
+The API serves the version with the alias `@champion`:
+
+```bash
+python src/promote.py <version>     # checks the quality gate, then moves @champion to that version
+kubectl -n mlops rollout restart deploy/api
+```
+
 ## Stop and clean up
 
 ```bash
