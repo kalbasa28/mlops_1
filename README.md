@@ -340,8 +340,8 @@ gcloud iam service-accounts keys create - \
   | gh secret set GCP_DVC_READER_KEY
 ```
 
-The first run creates the GHCR package `mlops_1-api`. Make it public (package settings on GitHub), like the training image,
-so the kind node can pull it without credentials.
+The first run creates the GHCR package `mlops_1-api`. It inherits the visibility of the public repository, so the kind node
+pulls it without credentials (if it is private, make it public in the package settings on GitHub).
 
 **Deploy** after a green run (the bot commit is on `main`):
 
