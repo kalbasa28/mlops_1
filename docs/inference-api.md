@@ -18,9 +18,11 @@ Request body for `/predict` (raw sensor values, `type` is `L`, `M` or `H`; anyth
 
 ## Build, deploy, call
 
+The image is built and pushed to GHCR by CI (`ghcr.io/kalbasa28/mlops_1-api:sha-<commit>`), which also pins its tag in
+`k8s/api.yaml` (README section 13). The measurements below were taken earlier with a locally built `mlops-api:local`
+loaded into kind; the image content is the same.
+
 ```bash
-docker build -f docker/api.Dockerfile --build-arg GIT_COMMIT=$(git rev-parse HEAD) -t mlops-api:local .
-kind load docker-image mlops-api:local --name mlops
 kubectl apply -f k8s/api.yaml
 kubectl -n mlops rollout status deploy/api
 
@@ -72,7 +74,7 @@ Model version 4 as stored in the registry: 5.9 MB in total, of which `model.skop
 A new model goes live with `kubectl -n mlops rollout restart deploy/api`. To measure what clients see during that, run `load_test.py` from a separate pod (the API pods themselves get replaced) while the restart runs:
 
 ```bash
-kubectl -n mlops run loadtest --image=mlops-api:local --image-pull-policy=Never --restart=Never --command -- sleep 3600
+kubectl -n mlops run loadtest --image="$(kubectl -n mlops get deploy api -o jsonpath='{.spec.template.spec.containers[0].image}')" --restart=Never --command -- sleep 3600
 kubectl -n mlops cp load_test.py loadtest:/tmp/load_test.py
 kubectl -n mlops cp data/processed/test.csv loadtest:/tmp/test.csv
 kubectl -n mlops exec loadtest -- python /tmp/load_test.py --url http://api:8000 --test-csv /tmp/test.csv --requests 4000 &

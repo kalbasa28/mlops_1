@@ -6,3 +6,6 @@ train:
   max_depth: 8
   class_weight: balanced
   random_seed: 42
+gate:
+  min_recall: 0.70
+  min_precision: 0.30

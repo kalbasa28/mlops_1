@@ -20,8 +20,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: mlops-api:local
-          imagePullPolicy: Never
+          image: ghcr.io/kalbasa28/mlops_1-api:sha-unpublished
           ports:
             - containerPort: 8000
           envFrom:

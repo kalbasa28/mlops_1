@@ -1,4 +1,4 @@
-# Predictive Maintenance Pipeline - Requirements v1.5
+# Predictive Maintenance Pipeline - Requirements v1.6
 
 Date: 2026-11-17 | Author: kalbasa28
 
@@ -33,6 +33,9 @@ to fail, so they can be inspected before they break.
 | FR-10 | An inference API in the cluster serves `predictive-maintenance@champion` from the registry (no model file in the image): `GET /health` returns the served model version, `POST /predict` takes raw sensor values and returns the failure prediction, its probability and the model version; invalid input is rejected with 422 | Must |
 | FR-11 | A Kubernetes Job (`k8s/train-job.yaml`) runs prepare -> train -> evaluate in the cluster on CPU and logs to the cluster MLflow. Hyperparameters come from the ConfigMap `train-params`, the MLflow address from the ConfigMap `mlflow-config`, credentials (GCS key) from a Secret; none of them are in the Job YAML. A hyperparameter changed in the ConfigMap is used by the next Job run without a new image | Must |
 | FR-12 | Every push to `main` runs CI: `ruff` lint/format checks and `pytest` unit tests (feature cleaning, metrics, API contract with a fake model). The image is built and pushed to GHCR only if both pass | Must |
+| FR-13 | CD: after lint and tests, CI retrains from scratch (`dvc repro --force` on the DVC-tracked data) and runs a quality gate on `metrics.json` with the thresholds in the `gate` section of `params.yaml`. Only if the gate passes are the training and API images built and pushed, and the new `sha-<commit>` tags committed into `k8s/train-job.yaml` and `k8s/api.yaml` | Must |
+| FR-14 | `promote.py` refuses to move `@champion` to a version whose test metrics (`eval/*` in its MLflow run) are below the same gate | Must |
+| FR-15 | Rollback: the previous model is restored with `promote.py <version>` + API restart; the previous code and images with `git revert` (through the same CI chain) or, in an emergency, `kubectl rollout undo` | Must |
 
 ## 3. Non-functional requirements
 
@@ -91,8 +94,16 @@ Load test: `load_test.py`, 100 sequential `POST /predict` requests from `test.cs
 
 | ID     | Category       | Requirement                                     | KPI                                   | How it is checked                                   | Measured (v1.5) |
 |--------|----------------|-------------------------------------------------|---------------------------------------|-----------------------------------------------------|-----------------|
-| NFR-20 | Isolation      | Unit tests need no data, model or MLflow server, so they run on any fresh CI runner | 0 network calls; no DVC pull before `pytest` | The `test` job installs only pip packages and runs `pytest` | TODO after first CI run |
-| NFR-21 | Feedback speed | A broken commit is reported quickly             | `lint` and `test` jobs each <= 3 min  | Job duration on the GitHub Actions run page         | Local: 14 tests in ~1 s; CI: TODO |
+| NFR-20 | Isolation      | Unit tests need no data, model or MLflow server, so they run on any fresh CI runner | 0 network calls; no DVC pull before `pytest` | The `test` job installs only pip packages and runs `pytest` | 14 tests passed on a fresh `ubuntu-24.04` runner with no `dvc pull` and no cluster (run 44151253953, commit `6ac4203`) |
+| NFR-21 | Feedback speed | A broken commit is reported quickly             | `lint` and `test` jobs each <= 3 min  | Job duration on the GitHub Actions run page         | `lint` 9 s, `test` 62 s (mostly `pip install`; pytest itself 2.8 s), run 44151253953 |
+
+### 3.7 CD and quality gate (new in v1.6)
+
+| ID     | Category       | Requirement                                     | KPI                                   | How it is checked                                   | Measured (v1.6) |
+|--------|----------------|-------------------------------------------------|---------------------------------------|-----------------------------------------------------|-----------------|
+| NFR-22 | Gate effectiveness | A model below the quality KPIs never gets an image or a manifest update | A gate failure skips `build`, `publish`, `deploy`: 0 images pushed, 0 manifest commits | Red run (`train.class_weight: null`) on the Actions page and in GHCR | TODO (red run) |
+| NFR-23 | Delivery time  | A good commit is ready to deploy quickly        | Push -> bot pin commit <= 20 min       | Workflow run duration                              | TODO (green run) |
+| NFR-24 | Rollback time  | A bad model is taken out of service quickly     | `promote.py <previous>` + `rollout restart` -> `/health` shows the old version in <= 2 min | Timed on the kind cluster | TODO (rollback) |
 
 ## 4. Change history
 
@@ -104,3 +115,4 @@ Load test: `load_test.py`, 100 sequential `POST /predict` requests from `test.cs
 | 1.3     | 2026-11-16 | kalbasa28 | Added FR-10 (inference API serving `@champion`) and inference NFR-12 (p95 latency), NFR-13 (throughput), NFR-14 (model size), NFR-15 (image size), NFR-16 (availability during restarts), all measured. |
 | 1.4     | 2026-11-16 | kalbasa28 | Added FR-11 (training Job with params from ConfigMap `train-params`, MLflow address from ConfigMap `mlflow-config`), NFR-17 (no config or credentials in workload manifests), NFR-18 (params of ConfigMap runs are traceable), NFR-19 (Job duration). |
 | 1.5     | 2026-11-17 | kalbasa28 | Added FR-12 (CI: lint + unit tests gate the image build), NFR-20 (unit tests isolated from data/model/MLflow), NFR-21 (CI feedback speed). |
+| 1.6     | 2026-11-17 | kalbasa28 | Added FR-13 (CD chain with a quality gate from `params.yaml`), FR-14 (gate in `promote.py`), FR-15 (rollback), NFR-22 (gate effectiveness), NFR-23 (delivery time), NFR-24 (rollback time). |

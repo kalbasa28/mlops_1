@@ -154,11 +154,10 @@ docker run --rm --network kind \
   ghcr.io/kalbasa28/mlops_1:sha-719bd4f0138e
 ```
 
-The GitHub Actions workflow (`.github/workflows/train-image.yml`) builds the image on every push to `main`, natively for
-amd64 and arm64. It smoke-tests it, scans it with Trivy (a fixable CRITICAL blocks the push) and pushes it as `sha-<commit>`.
-Never `latest`. Before any of that, a `lint` job runs `ruff check` and `ruff format --check` (config in `ruff.toml`) and a
-`test` job runs the unit tests in `tests/` with `pytest`; a lint error, an unformatted file or a failing test stops the build.
-Run the same checks locally:
+The GitHub Actions workflow (`.github/workflows/ci-cd.yml`) builds this image and the API image on every push to `main`,
+natively for amd64 and arm64. It smoke-tests them, scans them with Trivy (a fixable CRITICAL blocks the push) and pushes
+them as `sha-<commit>`. Never `latest`. Before any of that it runs lint, unit tests, the pipeline and the quality gate
+(section 13). Run the lint and test checks locally:
 
 ```bash
 pip install -r requirements-train.txt -r requirements-api.txt -r requirements-dev.txt
@@ -285,11 +284,10 @@ a new version; point the alias at one:
 python src/promote.py <version>     # e.g. 1 on a fresh cluster; versions are listed in the MLflow UI under Models
 ```
 
-Build, load and deploy (2 replicas behind the ClusterIP Service `api`):
+Deploy (2 replicas behind the ClusterIP Service `api`). The image `ghcr.io/kalbasa28/mlops_1-api:sha-<commit>` is built
+by CI, and CI pins its tag in `k8s/api.yaml` (section 13), so `git pull` first:
 
 ```bash
-docker build -f docker/api.Dockerfile --build-arg GIT_COMMIT=$(git rev-parse HEAD) -t mlops-api:local .
-kind load docker-image mlops-api:local --name mlops
 kubectl apply -f k8s/api.yaml
 kubectl -n mlops rollout status deploy/api
 ```
@@ -309,11 +307,73 @@ Interactive docs: <http://localhost:8000/docs>.
 
 - **New model:** move the alias (`python src/promote.py <version>`), then `kubectl -n mlops rollout restart deploy/api`.
   Running pods keep the version they loaded at startup until they are replaced. Rollback is the same with the older version.
+  `promote.py` refuses a version whose test metrics are below the `gate` section of `params.yaml` (section 13).
 - The restart replaces one pod at a time and stops an old pod only after the new one has loaded its model
   (`maxUnavailable: 0`, readiness probe on `/health`, `preStop` sleep), so clients see at most a few failed requests (NFR-16).
 - Load test (100 requests, p95): `python load_test.py` while the port-forward runs.
 
 Endpoints, load test results (p95, throughput), the restart test and model size: [`docs/inference-api.md`](docs/inference-api.md).
+
+## 13. CI/CD: quality gate, deploy, rollback
+
+Every push to `main` runs `.github/workflows/ci-cd.yml`:
+
+| Job | What it does | Stops the chain when |
+|---|---|---|
+| `lint`, `test` | `ruff check`, `ruff format --check`, `pytest` | a lint error, an unformatted file, a failing test |
+| `pipeline` | `dvc pull` of the raw CSV from GCS, `dvc repro --force` against a throwaway MLflow (`sqlite:///ci-mlflow.db` on the runner), then `python src/gate.py` | test recall or precision in `metrics.json` is below `gate.min_recall` / `gate.min_precision` in `params.yaml` |
+| `build`, `publish` | training and API images, amd64 + arm64, smoke test, Trivy, push as `sha-<commit>` | a failed smoke test or a fixable CRITICAL vulnerability |
+| `deploy` | `github-actions[bot]` commits the new `sha-<commit>` tags into `k8s/train-job.yaml` and `k8s/api.yaml` | |
+
+The model trained in CI only decides whether the commit may ship; it is thrown away with the runner. The model that is
+served comes from the cluster: the Job trains the same commit with the same data and seed, which gives the same metrics
+(`reproduce.py` measured a difference of 0.0000). `promote.py` checks the gate again on that version's metrics before it
+moves `@champion`, so a model trained outside CI (for example with params changed only in the ConfigMap) cannot reach the API
+if it is below the gate.
+
+One-time setup: the `pipeline` job reads the GCS key of the read-only service account from the GitHub secret
+`GCP_DVC_READER_KEY` (the key is never written to a file):
+
+```bash
+gcloud iam service-accounts keys create - \
+  --iam-account=dvc-reader@mlops-512019.iam.gserviceaccount.com \
+  | gh secret set GCP_DVC_READER_KEY
+```
+
+The first run creates the GHCR package `mlops_1-api`. Make it public (package settings on GitHub), like the training image,
+so the kind node can pull it without credentials.
+
+**Deploy** after a green run (the bot commit is on `main`):
+
+```bash
+git pull --no-rebase
+kubectl create configmap train-params -n mlops --from-file=params.yaml --dry-run=client -o yaml | kubectl apply -f -
+kubectl delete job train -n mlops --ignore-not-found
+kubectl apply -f k8s/train-job.yaml
+kubectl wait -n mlops --for=condition=complete job/train --timeout=600s
+python src/promote.py <new version>          # the version the Job registered (MLflow UI, Models)
+kubectl apply -f k8s/api.yaml                # new image tag -> rolling update, the new pods load the new @champion
+kubectl -n mlops rollout status deploy/api
+curl localhost:8000/health                   # with the port-forward from section 12: shows the new version
+```
+
+If `kubectl apply` prints `deployment.apps/api unchanged` (same image, only the alias moved), restart instead:
+`kubectl -n mlops rollout restart deploy/api`.
+
+**Red run** (a bad model does not pass): set `train.class_weight: null` in `params.yaml`, commit and push (CI retrains
+itself, a local `dvc repro` is not needed). The `pipeline` job fails at the quality gate (test recall about 0.43 < 0.70). `build`, `publish` and `deploy` are
+skipped, so no image is pushed and the manifests on `main` still point at the last good images. Raising
+`gate.min_recall` above the current recall (0.85) has the same effect. Revert the commit afterwards.
+
+**Rollback:**
+
+- Model: `python src/promote.py <previous version>` (it must pass the gate too), then
+  `kubectl -n mlops rollout restart deploy/api`.
+- Code (images): `git revert <bad commit>` and push. CI runs the whole chain on the old code, including the gate, and the
+  bot pins the rebuilt images; then deploy as above. Reverting only the bot's pin commit does not help: that push runs CI
+  too, which rebuilds the same code and pins it again.
+- Emergency, without waiting for CI: `kubectl -n mlops rollout undo deploy/api` returns the API to its previous image at
+  once. The cluster then differs from `main` until the next deploy.
 
 ## Stop and clean up
 
@@ -339,5 +399,5 @@ after a restart the cluster, PostgreSQL and MLflow come back with all runs.
 | Job pod stuck in `Init:0/1` / `ContainerCreating`, event `secret "dvc-reader-key" not found` | Create the Secret (section 11), then delete and re-apply the Job |
 | `pull-data` log: `401` / `403` from GCS | Key deleted or revoked, or the service account lost its bucket role: create a new key, recreate the Secret, re-run the Job |
 | API pod in `CrashLoopBackOff`, log: `Registered model alias champion not found` | No version has the alias yet: `python src/promote.py <version>`, then `kubectl -n mlops rollout restart deploy/api` |
-| API pod `ErrImageNeverPull` | The image is not in the kind node: `kind load docker-image mlops-api:local --name mlops` |
+| API or Job pod `ImagePullBackOff` | The pinned tag is not on GHCR yet (wait for the `deploy` job, then `git pull`), or the GHCR package is private: make it public in the package settings on GitHub |
 | Pod stuck in `CreateContainerConfigError` or `ContainerCreating`, event `configmap "mlflow-config" not found` (or `"train-params"`) | Create the ConfigMap: `kubectl apply -f k8s/mlflow-config.yaml` (section 3) / the `train-params` command in section 11 |

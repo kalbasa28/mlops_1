@@ -58,7 +58,7 @@ The 2 MEDIUM Python findings are both `pip` 26.1.2 (CVE-2026-13346, fixed in 26.
 
 ## Published image (GHCR)
 
-`.github/workflows/train-image.yml` builds the image on every push to `main`. It runs native `ubuntu-24.04` (amd64) and `ubuntu-24.04-arm` (arm64) runners, does a smoke test and a Trivy gate, and pushes only after both pass. The two architectures are joined into one multi-arch tag. Docker picks the matching one on pull.
+`.github/workflows/ci-cd.yml` (named `train-image.yml` until U2-5) builds the image on every push to `main`, after lint, unit tests and the quality gate (README section 13). It runs native `ubuntu-24.04` (amd64) and `ubuntu-24.04-arm` (arm64) runners, does a smoke test and a Trivy gate, and pushes only after both pass. The two architectures are joined into one multi-arch tag. Docker picks the matching one on pull.
 
 ```bash
 docker pull ghcr.io/kalbasa28/mlops_1:sha-719bd4f0138e
