@@ -1,6 +1,6 @@
-# Predictive Maintenance Pipeline - Requirements v1.4
+# Predictive Maintenance Pipeline - Requirements v1.5
 
-Date: 2026-11-16 | Author: kalbasa28
+Date: 2026-11-17 | Author: kalbasa28
 
 ## 1. Problem
 
@@ -32,6 +32,7 @@ to fail, so they can be inspected before they break.
 | FR-09 | Every model trained by `train` is registered as a new version of `predictive-maintenance` in the MLflow Model Registry; `python src/promote.py <version>` points the alias `@champion` at a version | Must |
 | FR-10 | An inference API in the cluster serves `predictive-maintenance@champion` from the registry (no model file in the image): `GET /health` returns the served model version, `POST /predict` takes raw sensor values and returns the failure prediction, its probability and the model version; invalid input is rejected with 422 | Must |
 | FR-11 | A Kubernetes Job (`k8s/train-job.yaml`) runs prepare -> train -> evaluate in the cluster on CPU and logs to the cluster MLflow. Hyperparameters come from the ConfigMap `train-params`, the MLflow address from the ConfigMap `mlflow-config`, credentials (GCS key) from a Secret; none of them are in the Job YAML. A hyperparameter changed in the ConfigMap is used by the next Job run without a new image | Must |
+| FR-12 | Every push to `main` runs CI: `ruff` lint/format checks and `pytest` unit tests (feature cleaning, metrics, API contract with a fake model). The image is built and pushed to GHCR only if both pass | Must |
 
 ## 3. Non-functional requirements
 
@@ -86,6 +87,13 @@ Load test: `load_test.py`, 100 sequential `POST /predict` requests from `test.cs
 | NFR-18 | Traceability   | A run's params are recoverable even when they came from the ConfigMap | 100% of Job runs log every param and the tag `params_file=/etc/train-params/params.yaml` | MLflow run page: Parameters, Tags | 2 of 2 Job runs (`b5bc673d` with the committed params, `9f435a1f` with `train.n_estimators` changed to 50 in the ConfigMap only) |
 | NFR-19 | Job duration   | A training Job is cheap enough to run in a defense | Job `Complete` <= 5 min on the kind cluster | `kubectl get job train -n mlops` DURATION | 18 s |
 
+### 3.6 CI (new in v1.5)
+
+| ID     | Category       | Requirement                                     | KPI                                   | How it is checked                                   | Measured (v1.5) |
+|--------|----------------|-------------------------------------------------|---------------------------------------|-----------------------------------------------------|-----------------|
+| NFR-20 | Isolation      | Unit tests need no data, model or MLflow server, so they run on any fresh CI runner | 0 network calls; no DVC pull before `pytest` | The `test` job installs only pip packages and runs `pytest` | TODO after first CI run |
+| NFR-21 | Feedback speed | A broken commit is reported quickly             | `lint` and `test` jobs each <= 3 min  | Job duration on the GitHub Actions run page         | Local: 14 tests in ~1 s; CI: TODO |
+
 ## 4. Change history
 
 | Version | Date       | Author    | Changes                                    |
@@ -95,3 +103,4 @@ Load test: `load_test.py`, 100 sequential `POST /predict` requests from `test.cs
 | 1.2     | 2026-11-15 | kalbasa28 | U2 scope. Added FR-08 (hyperparameter search), FR-09 (model registry + `@champion`), NFR-09 (full training tracking), NFR-10 (search cost), NFR-11 (registry traceability). `params.yaml` switched to the search's pick (200 trees). |
 | 1.3     | 2026-11-16 | kalbasa28 | Added FR-10 (inference API serving `@champion`) and inference NFR-12 (p95 latency), NFR-13 (throughput), NFR-14 (model size), NFR-15 (image size), NFR-16 (availability during restarts), all measured. |
 | 1.4     | 2026-11-16 | kalbasa28 | Added FR-11 (training Job with params from ConfigMap `train-params`, MLflow address from ConfigMap `mlflow-config`), NFR-17 (no config or credentials in workload manifests), NFR-18 (params of ConfigMap runs are traceable), NFR-19 (Job duration). |
+| 1.5     | 2026-11-17 | kalbasa28 | Added FR-12 (CI: lint + unit tests gate the image build), NFR-20 (unit tests isolated from data/model/MLflow), NFR-21 (CI feedback speed). |
